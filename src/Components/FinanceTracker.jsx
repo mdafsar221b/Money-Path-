@@ -143,7 +143,7 @@ const FinanceTracker = () => {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 bg-white min-h-screen">
-      <h1 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-900">Finance Tracker</h1>
+      <h1 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-900">MoneyPath</h1>
       
       {/* Tab Navigation */}
       <div className="border-b border-gray-200 mb-4 sm:mb-6">

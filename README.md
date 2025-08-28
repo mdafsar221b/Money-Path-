@@ -1,12 +1,32 @@
-# React + Vite
+# 💰 Simple Finance Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A clean, mobile-first expense tracker for roommates. Track personal expenses and shared costs with automatic settlement calculations.
 
-Currently, two official plugins are available:
+## 🌐 [Live Demo](splitflow-pi.vercel.app)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 📱 Features
 
-## Expanding the ESLint configuration
+- **Personal Expenses**: Track spending by categories (Udhari, Outside, Useless)
+- **Shared Expenses**: Split costs between roommates with auto-calculations
+- **Mobile Optimized**: Responsive design for phone usage
+- **Local Storage**: No signup required, data stays on your device
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 📸 Preview
+
+<img src="screenshots/Screenshot1.jpg" width="300" alt="Personal Expenses"> 
+<img src="screenshots/Screenshot2.jpg" width="300" alt="Personal Expenses"> 
+<img src="screenshots/Screenshot3.jpg" width="300" alt="Personal Expenses"> 
+
+
+- React 18 +
+- Tailwind CSS
+- Local Storage
+- Deployed on Vercel
+
+## 🚀 Setup
+
+```bash
+git clone https://github.com/mdafsar221b/splitflow.git
+cd finance-tracker
+npm install
+npm run dev
