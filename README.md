@@ -2,7 +2,7 @@
 
 A clean, mobile-first expense tracker for roommates. Track personal expenses and shared costs with automatic settlement calculations.
 
-## 🌐 [Live Demo](splitflow-pi.vercel.app)
+## 🌐 [Live Demo](https://splitflow-pi.vercel.app/)
 
 ## 📱 Features
 
@@ -12,10 +12,11 @@ A clean, mobile-first expense tracker for roommates. Track personal expenses and
 - **Local Storage**: No signup required, data stays on your device
 
 ## 📸 Preview
-
-<img src="screenshots/Screenshot1.jpg" width="300" alt="Personal Expenses"> 
-<img src="screenshots/Screenshot2.jpg" width="300" alt="Personal Expenses"> 
-<img src="screenshots/Screenshot3.jpg" width="300" alt="Personal Expenses"> 
+<div align = "center">
+<img src="/public/screenshots/Screenshot3.jpg" width="300" alt="Personal Expenses"> 
+<img src="/public/screenshots/Screenshot2.jpg" width="300" alt="Personal Expenses"> 
+<img src="/public/screenshots/Screenshot1.jpg" width="300" alt="Personal Expenses"> 
+</div>
 
 
 - React 18 +
@@ -27,6 +28,6 @@ A clean, mobile-first expense tracker for roommates. Track personal expenses and
 
 ```bash
 git clone https://github.com/mdafsar221b/splitflow.git
-cd finance-tracker
+cd splitflow
 npm install
 npm run dev
