@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const FinanceTracker = () => {
   // Helper to get a clean initial data structure
   const getInitialData = () => ({
     currentMonth: new Date().toISOString().slice(0, 7), // 'YYYY-MM' format
     transactions: [],
-    categories: ['Outside', 'Useless'],
+    categories: ['Outside', 'Useless'], // Removed Udhari
     roommates: ['You', 'Ravi'],
     sharedExpenses: [],
     history: [],
@@ -78,9 +78,6 @@ const FinanceTracker = () => {
   const [loanPerson, setLoanPerson] = useState('');
   const [expandedLoanKey, setExpandedLoanKey] = useState(null);
   
-  const canvasRef = useRef(null);
-  const colors = ['#f56565', '#48bb78', '#667eea', '#ecc94b', '#ed8936', '#4fd1c5'];
-
   // Effect to check if the month has changed on component load
   useEffect(() => {
     const checkAndArchiveMonth = () => {
@@ -150,80 +147,6 @@ const FinanceTracker = () => {
       console.error('Error saving data:', error);
     }
   }, [data]);
-
-  useEffect(() => {
-    if (activeTab === 'dashboard') {
-      drawPieChart();
-    }
-  }, [activeTab, data.transactions]);
-
-  const drawPieChart = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const chartData = Object.entries(categoryTotals);
-    const total = chartData.reduce((sum, [, amount]) => sum + amount, 0);
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    const radius = Math.min(cx, cy) - 20;
-    
-    // Clear canvas before drawing
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (total === 0) {
-      ctx.fillStyle = '#e2e8f0'; // Tailwind gray-300
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.fillStyle = '#a0aec0'; // Tailwind gray-500
-      ctx.font = '14px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('No personal expenses recorded', cx, cy);
-      return;
-    }
-
-    let startAngle = 0;
-    chartData.forEach(([category, amount], index) => {
-      const sliceAngle = (amount / total) * 2 * Math.PI;
-      const endAngle = startAngle + sliceAngle;
-
-      ctx.fillStyle = colors[index % colors.length];
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, radius, startAngle, endAngle);
-      ctx.closePath();
-      ctx.fill();
-
-      // Draw label on slice
-      const middleAngle = startAngle + sliceAngle / 2;
-      const labelRadius = radius * 0.7;
-      const labelX = cx + labelRadius * Math.cos(middleAngle);
-      const labelY = cy + labelRadius * Math.sin(middleAngle);
-      
-      ctx.fillStyle = 'white';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(category, labelX, labelY);
-      
-      startAngle = endAngle;
-    });
-
-    // Draw legend
-    const legendX = cx + radius + 40;
-    let legendY = 20;
-    chartData.forEach(([category, amount], index) => {
-      ctx.fillStyle = colors[index % colors.length];
-      ctx.fillRect(legendX, legendY, 10, 10);
-      ctx.fillStyle = '#4a5568';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'left';
-      ctx.fillText(`${category} - ₹${amount.toFixed(2)}`, legendX + 15, legendY + 9);
-      legendY += 20;
-    });
-  };
 
   // Helper to format 'YYYY-MM' into 'Month Year'
   const formatMonth = (monthStr) => {
@@ -307,6 +230,30 @@ const FinanceTracker = () => {
     }
   };
 
+  const deleteHistoryTransaction = (month, id) => {
+    setData(prev => {
+      const updatedHistory = prev.history.map(entry => {
+        if (entry.month === month) {
+          const updatedTransactions = entry.transactions.filter(t => t.id !== id);
+          const updatedCategoryTotals = updatedTransactions.reduce((acc, t) => {
+            acc[t.category] = (acc[t.category] || 0) + t.amount;
+            return acc;
+          }, {});
+          const updatedPersonalTotal = updatedTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+          return {
+            ...entry,
+            transactions: updatedTransactions,
+            categoryTotals: updatedCategoryTotals,
+            personalTotal: updatedPersonalTotal,
+          };
+        }
+        return entry;
+      });
+      return { ...prev, history: updatedHistory };
+    });
+  };
+
   const handleHistoryToggle = (key) => {
     setExpandedHistoryKey(prevKey => (prevKey === key ? null : key));
   };
@@ -317,10 +264,6 @@ const FinanceTracker = () => {
 
   const handleRoommateToggle = (name) => {
     setExpandedRoommate(prevName => (prevName === name ? null : name));
-  };
-
-  const handleLoanToggle = (key) => {
-    setExpandedLoanKey(prevKey => (prevKey === key ? null : key));
   };
 
   // --- CALCULATIONS FOR CURRENT MONTH ---
@@ -359,7 +302,6 @@ const FinanceTracker = () => {
           <button onClick={() => setActiveTab('personal')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'personal' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>Personal</button>
           <button onClick={() => setActiveTab('shared')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'shared' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>Shared</button>
           <button onClick={() => setActiveTab('loans')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'loans' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>Loans</button>
-          <button onClick={() => setActiveTab('dashboard')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'dashboard' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>Dashboard</button>
           <button onClick={() => setActiveTab('history')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'history' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>History</button>
         </div>
       </div>
@@ -538,14 +480,6 @@ const FinanceTracker = () => {
         </div>
       )}
 
-      {/* Dashboard Tab */}
-      {activeTab === 'dashboard' && (
-        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg mb-4 sm:mb-6">
-          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Personal Expenses Breakdown</h2>
-          <canvas ref={canvasRef} width="400" height="400" className="mx-auto"></canvas>
-        </div>
-      )}
-
       {/* History Tab */}
       {activeTab === 'history' && (
         <div>
@@ -571,7 +505,7 @@ const FinanceTracker = () => {
                               <span className="font-medium">{category}</span>
                               <div className="flex items-center space-x-2"><span className="font-semibold">₹{total.toFixed(2)}</span>{categoryTransactions.length > 0 && (<svg className={`w-3 h-3 text-gray-500 transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>)}</div>
                             </button>
-                            {isExpanded && (<div className="pl-4 pr-2 pb-2"><div className="border-l-2 border-gray-200 pl-3 space-y-1 pt-1">{categoryTransactions.map(transaction => (<div key={transaction.id} className="flex justify-between items-center text-xs text-gray-700"><span className="truncate pr-2">{transaction.description}</span><span className="font-mono flex-shrink-0">₹{transaction.amount.toFixed(2)}</span></div>))}</div></div>)}
+                            {isExpanded && (<div className="pl-4 pr-2 pb-2"><div className="border-l-2 border-gray-200 pl-3 space-y-1 pt-1">{categoryTransactions.map(transaction => (<div key={transaction.id} className="flex justify-between items-center text-xs text-gray-700"><span className="truncate pr-2">{transaction.description}</span><div className="flex items-center flex-shrink-0"><span className="font-mono pr-3">₹{transaction.amount.toFixed(2)}</span>{transaction.category === 'Udhari' && (<button onClick={() => deleteHistoryTransaction(entry.month, transaction.id)} className="text-red-500 hover:text-red-700"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>)}</div></div>))}</div></div>)}
                           </div>
                         )
                       })}
