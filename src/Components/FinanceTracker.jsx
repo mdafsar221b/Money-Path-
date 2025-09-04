@@ -1,31 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const FinanceTracker = () => {
-
   // Helper to get a clean initial data structure
   const getInitialData = () => ({
     currentMonth: new Date().toISOString().slice(0, 7), // 'YYYY-MM' format
     transactions: [],
-    categories: ['Udhari', 'Outside', 'Useless'],
+    categories: ['Outside', 'Useless'],
     roommates: ['You', 'Ravi'],
     sharedExpenses: [],
     history: [],
+    loans: {
+      lentTo: [], // Money I have lent
+      owedBy: [], // Money I owe
+    },
   });
-  
+
   // Load data from localStorage or initialize with the new structure
   const loadData = () => {
     try {
       const saved = localStorage.getItem('financeData');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // If data is in the old format, migrate it to the new structure
-        if (!parsed.hasOwnProperty('currentMonth')) {
-          console.log("Old data format detected. Migrating to new structure.");
-          const migratedData = getInitialData();
-          migratedData.transactions = parsed.transactions || [];
-          migratedData.categories = parsed.categories || ['Udhari', 'Outside', 'Useless'];
-          migratedData.roommates = parsed.roommates || ['You', 'Ravi'];
-          migratedData.sharedExpenses = parsed.sharedExpenses || [];
+        // Data migration from old format
+        if (!parsed.hasOwnProperty('loans')) {
+          console.log("Old data format detected. Migrating 'Udhari' to new loans structure.");
+          const newTransactions = [];
+          const newLoans = { lentTo: [], owedBy: [] };
+
+          if (parsed.transactions) {
+            parsed.transactions.forEach(t => {
+              if (t.category === 'Udhari') {
+                newLoans.lentTo.push(t);
+              } else {
+                newTransactions.push(t);
+              }
+            });
+          }
+
+          const migratedData = {
+            ...parsed,
+            transactions: newTransactions,
+            loans: newLoans,
+            categories: parsed.categories ? parsed.categories.filter(cat => cat !== 'Udhari') : ['Outside', 'Useless'],
+          };
           return migratedData;
         }
         return parsed;
@@ -39,10 +56,9 @@ const FinanceTracker = () => {
 
   const [data, setData] = useState(loadData);
   const [activeTab, setActiveTab] = useState('personal');
-  const [expandedHistoryKey, setExpandedHistoryKey] = useState(null); // To track open dropdown in history
-  const [expandedCategory, setExpandedCategory] = useState(null); // To track open dropdown in personal tab
-  const [expandedRoommate, setExpandedRoommate] = useState(null); // To track open dropdown in shared tab
-
+  const [expandedHistoryKey, setExpandedHistoryKey] = useState(null);
+  const [expandedCategory, setExpandedCategory] = useState(null);
+  const [expandedRoommate, setExpandedRoommate] = useState(null);
 
   // Personal transaction form state
   const [amount, setAmount] = useState('');
@@ -55,70 +71,76 @@ const FinanceTracker = () => {
   const [sharedDescription, setSharedDescription] = useState('');
   const [paidBy, setPaidBy] = useState('You');
 
+  // Loans form state
+  const [loanAmount, setLoanAmount] = useState('');
+  const [loanDescription, setLoanDescription] = useState('');
+  const [loanType, setLoanType] = useState('lent'); // 'lent' or 'owed'
+  const [loanPerson, setLoanPerson] = useState('');
+  const [expandedLoanKey, setExpandedLoanKey] = useState(null);
+  
+  const canvasRef = useRef(null);
+  const colors = ['#f56565', '#48bb78', '#667eea', '#ecc94b', '#ed8936', '#4fd1c5'];
+
   // Effect to check if the month has changed on component load
   useEffect(() => {
     const checkAndArchiveMonth = () => {
-        const currentMonthStr = new Date().toISOString().slice(0, 7);
+      const currentMonthStr = new Date().toISOString().slice(0, 7);
+      
+      if (data.currentMonth !== currentMonthStr) {
+        console.log(`New month detected! Archiving data for ${data.currentMonth}`);
         
-        // Only run if the stored month is different from the actual current month
-        if (data.currentMonth !== currentMonthStr) {
-            console.log(`New month detected! Archiving data for ${data.currentMonth}`);
-            
-            // Do not archive if there are no transactions
-            if (data.transactions.length === 0 && data.sharedExpenses.length === 0) {
-                 setData(prevData => ({
-                    ...prevData,
-                    currentMonth: currentMonthStr,
-                }));
-                return;
-            }
-
-            // 1. Calculate summaries for the month that just ended
-            const personalTotal = data.transactions.reduce((sum, t) => sum + t.amount, 0);
-            const categoryTotals = data.transactions.reduce((acc, t) => {
-                acc[t.category] = (acc[t.category] || 0) + t.amount;
-                return acc;
-            }, {});
-            const totalShared = data.sharedExpenses.reduce((sum, e) => sum + e.amount, 0);
-            const perPersonShare = data.roommates.length > 0 ? totalShared / data.roommates.length : 0;
-            const paidByEach = data.roommates.reduce((acc, roommate) => {
-                acc[roommate] = data.sharedExpenses
-                    .filter(e => e.paidBy === roommate)
-                    .reduce((sum, e) => sum + e.amount, 0);
-                return acc;
-            }, {});
-            const settlements = data.roommates.map(roommate => ({
-                name: roommate,
-                paid: paidByEach[roommate] || 0,
-                balance: (paidByEach[roommate] || 0) - perPersonShare
-            }));
-
-            // 2. Create the history entry, now including the raw transaction data
-            const historyEntry = {
-                month: data.currentMonth,
-                personalTotal,
-                categoryTotals,
-                totalShared,
-                settlements,
-                transactions: data.transactions,
-                sharedExpenses: data.sharedExpenses,
-            };
-
-            // 3. Reset for the new month
-            setData(prevData => ({
-                ...prevData,
-                currentMonth: currentMonthStr,
-                transactions: [],
-                sharedExpenses: [],
-                history: [...prevData.history, historyEntry],
-            }));
+        if (data.transactions.length === 0 && data.sharedExpenses.length === 0) {
+          setData(prevData => ({
+            ...prevData,
+            currentMonth: currentMonthStr,
+          }));
+          return;
         }
+
+        // 1. Calculate summaries for the month that just ended
+        const personalTotal = data.transactions.reduce((sum, t) => sum + t.amount, 0);
+        const categoryTotals = data.transactions.reduce((acc, t) => {
+          acc[t.category] = (acc[t.category] || 0) + t.amount;
+          return acc;
+        }, {});
+        const totalShared = data.sharedExpenses.reduce((sum, e) => sum + e.amount, 0);
+        const perPersonShare = data.roommates.length > 0 ? totalShared / data.roommates.length : 0;
+        const paidByEach = data.roommates.reduce((acc, roommate) => {
+          acc[roommate] = data.sharedExpenses
+            .filter(e => e.paidBy === roommate)
+            .reduce((sum, e) => sum + e.amount, 0);
+          return acc;
+        }, {});
+        const settlements = data.roommates.map(roommate => ({
+          name: roommate,
+          paid: paidByEach[roommate] || 0,
+          balance: (paidByEach[roommate] || 0) - perPersonShare
+        }));
+
+        // 2. Create the history entry, now including the raw transaction data
+        const historyEntry = {
+          month: data.currentMonth,
+          personalTotal,
+          categoryTotals,
+          totalShared,
+          settlements,
+          transactions: data.transactions,
+          sharedExpenses: data.sharedExpenses,
+        };
+
+        // 3. Reset for the new month, loans are not reset
+        setData(prevData => ({
+          ...prevData,
+          currentMonth: currentMonthStr,
+          transactions: [],
+          sharedExpenses: [],
+          history: [...prevData.history, historyEntry],
+        }));
+      }
     };
 
     checkAndArchiveMonth();
-    // This effect should only run once on mount after data is loaded.
   }, []);
-
 
   // Save to localStorage whenever data changes
   useEffect(() => {
@@ -129,10 +151,84 @@ const FinanceTracker = () => {
     }
   }, [data]);
 
+  useEffect(() => {
+    if (activeTab === 'dashboard') {
+      drawPieChart();
+    }
+  }, [activeTab, data.transactions]);
+
+  const drawPieChart = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const chartData = Object.entries(categoryTotals);
+    const total = chartData.reduce((sum, [, amount]) => sum + amount, 0);
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const radius = Math.min(cx, cy) - 20;
+    
+    // Clear canvas before drawing
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (total === 0) {
+      ctx.fillStyle = '#e2e8f0'; // Tailwind gray-300
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.fillStyle = '#a0aec0'; // Tailwind gray-500
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No personal expenses recorded', cx, cy);
+      return;
+    }
+
+    let startAngle = 0;
+    chartData.forEach(([category, amount], index) => {
+      const sliceAngle = (amount / total) * 2 * Math.PI;
+      const endAngle = startAngle + sliceAngle;
+
+      ctx.fillStyle = colors[index % colors.length];
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, radius, startAngle, endAngle);
+      ctx.closePath();
+      ctx.fill();
+
+      // Draw label on slice
+      const middleAngle = startAngle + sliceAngle / 2;
+      const labelRadius = radius * 0.7;
+      const labelX = cx + labelRadius * Math.cos(middleAngle);
+      const labelY = cy + labelRadius * Math.sin(middleAngle);
+      
+      ctx.fillStyle = 'white';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(category, labelX, labelY);
+      
+      startAngle = endAngle;
+    });
+
+    // Draw legend
+    const legendX = cx + radius + 40;
+    let legendY = 20;
+    chartData.forEach(([category, amount], index) => {
+      ctx.fillStyle = colors[index % colors.length];
+      ctx.fillRect(legendX, legendY, 10, 10);
+      ctx.fillStyle = '#4a5568';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${category} - ₹${amount.toFixed(2)}`, legendX + 15, legendY + 9);
+      legendY += 20;
+    });
+  };
+
   // Helper to format 'YYYY-MM' into 'Month Year'
   const formatMonth = (monthStr) => {
     if (!monthStr) return '';
-    const date = new Date(monthStr + '-02'); // Using day '02' to avoid timezone issues
+    const date = new Date(monthStr + '-02');
     return date.toLocaleString('default', { month: 'long', year: 'numeric' });
   };
 
@@ -185,7 +281,32 @@ const FinanceTracker = () => {
       setData(prev => ({ ...prev, roommates: [...prev.roommates, name.trim()] }));
     }
   };
-  
+
+  const addLoan = () => {
+    if (!loanAmount || !loanDescription || !loanPerson) return;
+    const newLoan = {
+      id: Date.now(),
+      amount: parseFloat(loanAmount),
+      description: loanDescription.trim(),
+      person: loanPerson.trim(),
+      date: new Date().toLocaleDateString()
+    };
+    if (loanType === 'lent') {
+      setData(prev => ({ ...prev, loans: { ...prev.loans, lentTo: [...prev.loans.lentTo, newLoan] } }));
+    } else {
+      setData(prev => ({ ...prev, loans: { ...prev.loans, owedBy: [...prev.loans.owedBy, newLoan] } }));
+    }
+    setLoanAmount(''); setLoanDescription(''); setLoanPerson('');
+  };
+
+  const deleteLoan = (type, id) => {
+    if (type === 'lent') {
+      setData(prev => ({ ...prev, loans: { ...prev.loans, lentTo: prev.loans.lentTo.filter(loan => loan.id !== id) } }));
+    } else {
+      setData(prev => ({ ...prev, loans: { ...prev.loans, owedBy: prev.loans.owedBy.filter(loan => loan.id !== id) } }));
+    }
+  };
+
   const handleHistoryToggle = (key) => {
     setExpandedHistoryKey(prevKey => (prevKey === key ? null : key));
   };
@@ -196,6 +317,10 @@ const FinanceTracker = () => {
 
   const handleRoommateToggle = (name) => {
     setExpandedRoommate(prevName => (prevName === name ? null : name));
+  };
+
+  const handleLoanToggle = (key) => {
+    setExpandedLoanKey(prevKey => (prevKey === key ? null : key));
   };
 
   // --- CALCULATIONS FOR CURRENT MONTH ---
@@ -217,18 +342,24 @@ const FinanceTracker = () => {
     return { name: roommate, paid, balance, amountToSettle };
   });
 
+  // Calculate total lent and owed
+  const totalLent = data.loans.lentTo.reduce((sum, l) => sum + l.amount, 0);
+  const totalOwed = data.loans.owedBy.reduce((sum, o) => sum + o.amount, 0);
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 bg-white min-h-screen">
-        <div className="text-center mb-4">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">MoneyPath</h1>
-            <p className="text-sm sm:text-base text-gray-600">Expenses for {formatMonth(data.currentMonth)}</p>
-        </div>
-      
+      <div className="text-center mb-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">MoneyPath</h1>
+        <p className="text-sm sm:text-base text-gray-600">Expenses for {formatMonth(data.currentMonth)}</p>
+      </div>
+
       {/* Tab Navigation */}
       <div className="border-b border-gray-200 mb-4 sm:mb-6">
         <div className="flex space-x-4 sm:space-x-8">
           <button onClick={() => setActiveTab('personal')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'personal' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>Personal</button>
           <button onClick={() => setActiveTab('shared')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'shared' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>Shared</button>
+          <button onClick={() => setActiveTab('loans')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'loans' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>Loans</button>
+          <button onClick={() => setActiveTab('dashboard')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'dashboard' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>Dashboard</button>
           <button onClick={() => setActiveTab('history')} className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm ${activeTab === 'history' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>History</button>
         </div>
       </div>
@@ -254,20 +385,20 @@ const FinanceTracker = () => {
             <div className="mb-4"><p className="text-lg sm:text-xl font-bold">Total Spent: ₹{personalTotal.toFixed(2)}</p></div>
             <div className="space-y-2">
               {Object.entries(categoryTotals).map(([category, total]) => {
-                  const isExpanded = expandedCategory === category;
-                  const categoryTransactions = data.transactions.filter(t => t.category === category);
-                  return (
-                    <div key={category} className="bg-white rounded border">
-                      <button onClick={() => handleCategoryToggle(category)} className="w-full flex justify-between items-center p-2 text-sm text-left" disabled={categoryTransactions.length === 0}>
-                        <span className="font-medium text-sm sm:text-base">{category}</span>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-sm sm:text-base">₹{total.toFixed(2)}</span>
-                          {categoryTransactions.length > 0 && (<svg className={`w-3 h-3 text-gray-500 transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>)}
-                        </div>
-                      </button>
-                      {isExpanded && (<div className="pl-4 pr-2 pb-2"><div className="border-l-2 border-gray-200 pl-3 space-y-1 pt-1">{[...categoryTransactions].reverse().map(transaction => (<div key={transaction.id} className="flex justify-between items-center text-xs text-gray-700 py-1"><div className="flex-1 min-w-0"><p className="truncate pr-2">{transaction.description}</p><p className="text-gray-400 text-[10px]">{transaction.date}</p></div><div className="flex items-center flex-shrink-0"><span className="font-mono pr-3">₹{transaction.amount.toFixed(2)}</span><button onClick={() => deleteTransaction(transaction.id)} className="text-red-500 hover:text-red-700"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div></div>))}</div></div>)}
-                    </div>
-                  )
+                const isExpanded = expandedCategory === category;
+                const categoryTransactions = data.transactions.filter(t => t.category === category);
+                return (
+                  <div key={category} className="bg-white rounded border">
+                    <button onClick={() => handleCategoryToggle(category)} className="w-full flex justify-between items-center p-2 text-sm text-left" disabled={categoryTransactions.length === 0}>
+                      <span className="font-medium text-sm sm:text-base">{category}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-sm sm:text-base">₹{total.toFixed(2)}</span>
+                        {categoryTransactions.length > 0 && (<svg className={`w-3 h-3 text-gray-500 transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>)}
+                      </div>
+                    </button>
+                    {isExpanded && (<div className="pl-4 pr-2 pb-2"><div className="border-l-2 border-gray-200 pl-3 space-y-1 pt-1">{[...categoryTransactions].reverse().map(transaction => (<div key={transaction.id} className="flex justify-between items-center text-xs text-gray-700 py-1"><div className="flex-1 min-w-0"><p className="truncate pr-2">{transaction.description}</p><p className="text-gray-400 text-[10px]">{transaction.date}</p></div><div className="flex items-center flex-shrink-0"><span className="font-mono pr-3">₹{transaction.amount.toFixed(2)}</span><button onClick={() => deleteTransaction(transaction.id)} className="text-red-500 hover:text-red-700"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div></div>))}</div></div>)}
+                  </div>
+                )
               })}
             </div>
           </div>
@@ -300,15 +431,15 @@ const FinanceTracker = () => {
                         <div className="flex-1">
                           <p className="font-medium text-sm sm:text-base">{person.name}</p>
                           <p className="text-xs sm:text-sm text-gray-500">Paid: ₹{person.paid.toFixed(2)}</p>
-                           {person.amountToSettle > 0 && (
+                          {person.amountToSettle > 0 && (
                             <p className="text-blue-600 font-medium text-xs mt-1">Needs to spend ₹{person.amountToSettle.toFixed(2)} to settle</p>
                           )}
                         </div>
                         <div className="text-right flex-shrink-0 flex items-center">
                           <div>
                             {person.balance > 0 ? (<p className="text-green-600 font-medium text-xs sm:text-sm">Gets back: ₹{person.balance.toFixed(2)}</p>)
-                            : person.balance < 0 ? (<p className="text-red-600 font-medium text-xs sm:text-sm">Owes: ₹{Math.abs(person.balance).toFixed(2)}</p>)
-                            : (<p className="text-gray-500 font-medium text-xs sm:text-sm">Settled</p>)}
+                              : person.balance < 0 ? (<p className="text-red-600 font-medium text-xs sm:text-sm">Owes: ₹{Math.abs(person.balance).toFixed(2)}</p>)
+                                : (<p className="text-gray-500 font-medium text-xs sm:text-sm">Settled</p>)}
                           </div>
                           {roommateExpenses.length > 0 && (<svg className={`w-3 h-3 ml-2 text-gray-500 transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>)}
                         </div>
@@ -316,22 +447,22 @@ const FinanceTracker = () => {
                     </button>
                     {isExpanded && (
                       <div className="px-3 pb-2">
-                         <div className="border-l-2 border-gray-200 pl-3 ml-1 space-y-1">
+                        <div className="border-l-2 border-gray-200 pl-3 ml-1 space-y-1">
                           {[...roommateExpenses].reverse().map(expense => (
                             <div key={expense.id} className="flex justify-between items-center text-xs text-gray-700 py-1">
-                               <div className="flex-1 min-w-0">
-                                  <p className="truncate pr-2">{expense.description}</p>
-                                  <p className="text-gray-400 text-[10px]">{expense.date}</p>
-                                </div>
-                                <div className="flex items-center flex-shrink-0">
-                                  <span className="font-mono pr-3">₹{expense.amount.toFixed(2)}</span>
-                                  <button onClick={() => deleteSharedExpense(expense.id)} className="text-red-500 hover:text-red-700">
-                                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                  </button>
-                                </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="truncate pr-2">{expense.description}</p>
+                                <p className="text-gray-400 text-[10px]">{expense.date}</p>
+                              </div>
+                              <div className="flex items-center flex-shrink-0">
+                                <span className="font-mono pr-3">₹{expense.amount.toFixed(2)}</span>
+                                <button onClick={() => deleteSharedExpense(expense.id)} className="text-red-500 hover:text-red-700">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                              </div>
                             </div>
                           ))}
-                         </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -339,6 +470,79 @@ const FinanceTracker = () => {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Loans Tab */}
+      {activeTab === 'loans' && (
+        <div>
+          <div className="bg-gray-50 p-3 sm:p-4 rounded-lg mb-4 sm:mb-6">
+            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Add Loan/Owed Amount</h2>
+            <div className="space-y-3">
+              <div className="flex space-x-2">
+                <button onClick={() => setLoanType('lent')} className={`flex-1 py-2 rounded text-sm sm:text-base ${loanType === 'lent' ? 'bg-gray-900 text-white' : 'bg-white text-gray-900 border border-gray-300'}`}>I lent money</button>
+                <button onClick={() => setLoanType('owed')} className={`flex-1 py-2 rounded text-sm sm:text-base ${loanType === 'owed' ? 'bg-gray-900 text-white' : 'bg-white text-gray-900 border border-gray-300'}`}>I owe money</button>
+              </div>
+              <input type="number" placeholder="Amount" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} className="w-full border border-gray-300 rounded px-3 py-2 text-sm sm:text-base" />
+              <input type="text" placeholder="Description" value={loanDescription} onChange={(e) => setLoanDescription(e.target.value)} className="w-full border border-gray-300 rounded px-3 py-2 text-sm sm:text-base" />
+              <input type="text" placeholder="Person's name" value={loanPerson} onChange={(e) => setLoanPerson(e.target.value)} className="w-full border border-gray-300 rounded px-3 py-2 text-sm sm:text-base" />
+            </div>
+            <button onClick={addLoan} className="w-full mt-4 bg-gray-900 text-white px-4 py-2 rounded text-sm sm:text-base">Add Entry</button>
+          </div>
+
+          <div className="bg-gray-50 p-3 sm:p-4 rounded-lg mb-4 sm:mb-6">
+            <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Summary</h3>
+            <div className="flex justify-between items-center mb-4">
+              <p className="font-bold text-green-600 text-sm sm:text-base">Total Lent: ₹{totalLent.toFixed(2)}</p>
+              <p className="font-bold text-red-600 text-sm sm:text-base">Total Owed: ₹{totalOwed.toFixed(2)}</p>
+            </div>
+            <h4 className="font-semibold text-gray-700 text-sm sm:text-base mb-2">Lent to others</h4>
+            <div className="space-y-2 mb-4">
+              {data.loans.lentTo.length === 0 ? (<p className="text-gray-500 text-xs">No lent money recorded.</p>) : (
+                data.loans.lentTo.map(loan => (
+                  <div key={loan.id} className="flex justify-between items-center bg-white rounded border p-2 text-xs sm:text-sm">
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate pr-2 text-sm">{loan.description} <span className="text-gray-500">({loan.person})</span></p>
+                      <p className="text-gray-400 text-[10px]">{loan.date}</p>
+                    </div>
+                    <div className="flex items-center flex-shrink-0">
+                      <span className="font-mono pr-3">₹{loan.amount.toFixed(2)}</span>
+                      <button onClick={() => deleteLoan('lent', loan.id)} className="text-red-500 hover:text-red-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <h4 className="font-semibold text-gray-700 text-sm sm:text-base mb-2">Owed to others</h4>
+            <div className="space-y-2">
+              {data.loans.owedBy.length === 0 ? (<p className="text-gray-500 text-xs">No owed money recorded.</p>) : (
+                data.loans.owedBy.map(loan => (
+                  <div key={loan.id} className="flex justify-between items-center bg-white rounded border p-2 text-xs sm:text-sm">
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate pr-2 text-sm">{loan.description} <span className="text-gray-500">({loan.person})</span></p>
+                      <p className="text-gray-400 text-[10px]">{loan.date}</p>
+                    </div>
+                    <div className="flex items-center flex-shrink-0">
+                      <span className="font-mono pr-3">₹{loan.amount.toFixed(2)}</span>
+                      <button onClick={() => deleteLoan('owed', loan.id)} className="text-red-500 hover:text-red-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dashboard Tab */}
+      {activeTab === 'dashboard' && (
+        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg mb-4 sm:mb-6">
+          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Personal Expenses Breakdown</h2>
+          <canvas ref={canvasRef} width="400" height="400" className="mx-auto"></canvas>
         </div>
       )}
 
@@ -378,21 +582,21 @@ const FinanceTracker = () => {
                     <p className="text-md sm:text-lg mb-2">Total Shared: ₹{entry.totalShared.toFixed(2)}</p>
                     <div className="space-y-2">
                       {entry.settlements.map(person => {
-                          const key = `${entry.month}-shared-${person.name}`;
-                          const isExpanded = expandedHistoryKey === key;
-                          const roommateExpenses = entry.sharedExpenses?.filter(e => e.paidBy === person.name) || [];
-                          return(
-                            <div key={person.name} className="bg-white rounded text-sm border">
-                              <button onClick={() => handleHistoryToggle(key)} className="w-full flex justify-between items-center p-2 text-left" disabled={roommateExpenses.length === 0}>
-                                <div className="flex-1"><p className="font-medium">{person.name}</p><p className="text-xs text-gray-500">Paid: ₹{person.paid.toFixed(2)}</p></div>
-                                <div className="text-right flex-shrink-0 flex items-center">
-                                  {person.balance > 0 ? (<p className="text-green-600 font-medium">Got back: ₹{person.balance.toFixed(2)}</p>) : person.balance < 0 ? (<p className="text-red-600 font-medium">Owed: ₹{Math.abs(person.balance).toFixed(2)}</p>) : (<p className="text-gray-500 font-medium">Settled</p>)}
-                                  {roommateExpenses.length > 0 && (<svg className={`w-3 h-3 ml-2 text-gray-500 transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>)}
-                                </div>
-                              </button>
-                              {isExpanded && (<div className="pl-4 pr-2 pb-2"><div className="border-l-2 border-gray-200 pl-3 space-y-1 pt-1">{roommateExpenses.map(expense => (<div key={expense.id} className="flex justify-between items-center text-xs text-gray-700"><span className="truncate pr-2">{expense.description}</span><span className="font-mono flex-shrink-0">₹{expense.amount.toFixed(2)}</span></div>))}</div></div>)}
-                            </div>
-                          )
+                        const key = `${entry.month}-shared-${person.name}`;
+                        const isExpanded = expandedHistoryKey === key;
+                        const roommateExpenses = entry.sharedExpenses?.filter(e => e.paidBy === person.name) || [];
+                        return (
+                          <div key={person.name} className="bg-white rounded text-sm border">
+                            <button onClick={() => handleHistoryToggle(key)} className="w-full flex justify-between items-center p-2 text-left" disabled={roommateExpenses.length === 0}>
+                              <div className="flex-1"><p className="font-medium">{person.name}</p><p className="text-xs text-gray-500">Paid: ₹{person.paid.toFixed(2)}</p></div>
+                              <div className="text-right flex-shrink-0 flex items-center">
+                                {person.balance > 0 ? (<p className="text-green-600 font-medium">Got back: ₹{person.balance.toFixed(2)}</p>) : person.balance < 0 ? (<p className="text-red-600 font-medium">Owed: ₹{Math.abs(person.balance).toFixed(2)}</p>) : (<p className="text-gray-500 font-medium">Settled</p>)}
+                                {roommateExpenses.length > 0 && (<svg className={`w-3 h-3 ml-2 text-gray-500 transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>)}
+                              </div>
+                            </button>
+                            {isExpanded && (<div className="pl-4 pr-2 pb-2"><div className="border-l-2 border-gray-200 pl-3 space-y-1 pt-1">{roommateExpenses.map(expense => (<div key={expense.id} className="flex justify-between items-center text-xs text-gray-700"><span className="truncate pr-2">{expense.description}</span><span className="font-mono flex-shrink-0">₹{expense.amount.toFixed(2)}</span></div>))}</div></div>)}
+                          </div>
+                        )
                       })}
                     </div>
                   </div>
@@ -407,4 +611,3 @@ const FinanceTracker = () => {
 };
 
 export default FinanceTracker;
-
